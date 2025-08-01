@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Monad Paint 🎨</title>
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d0d0d;
+      --fg: #ffffff;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --pixel-size: 24px;
+      --grid-gap: 2px;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 16px;
+      min-height: 100vh;
+      position: relative;
+      /* bottom bar height reserve */
+      padding-bottom: 40px;
+    }
+
+    #header {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      background: var(--bg);
+      padding: 10px 16px 0;
+      margin-bottom: 20px;
+      position: sticky;
+      top: 0;
+      user-select: none;
+      z-index: 10;
+    }
+
+    #logo {
+      height: 40px;
+      margin-right: 12px;
+    }
+
+    #title {
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: var(--accent);
+      flex-grow: 1;
+    }
+
+    #controls {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 10px 16px;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+      transition: background-color 0.25s ease, transform 0.2s ease;
+    }
+
+    button:hover:not(:disabled) {
+      background-color: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      background-color: #555;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    #colorPicker {
+      height: 40px;
+      width: 50px;
+      border: 2px solid #888;
+      border-radius: 4px;
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    #canvas {
+      display: grid;
+      grid-template-columns: repeat(20, var(--pixel-size));
+      gap: var(--grid-gap);
+      background: #222;
+      padding: var(--grid-gap);
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      user-select: none;
+    }
+
+    .pixel {
+      width: var(--pixel-size);
+      height: var(--pixel-size);
+      background-color: #1f1f1f;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: transform 0.1s ease, background-color 0.2s ease;
+    }
+
+    .pixel:hover {
+      transform: scale(1.2);
+      outline: 1px solid #aaa;
+    }
+
+    #status {
+      margin-top: 14px;
+      font-size: 0.95rem;
+      color: #bbb;
+      text-align: center;
+      max-width: 400px;
+      word-break: break-word;
+      min-height: 1.5em;
+      user-select: text;
+    }
+
+    #balance {
+      font-weight: 500;
+      color: #ddd;
+    }
+
+    /* Fixed bottom bar for X profile */
+    #footer {
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      height: 36px;
+      background: rgba(13, 13, 13, 0.95);
+      color: #b3a7f9;
+      font-weight: bold;
+      text-align: center;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      user-select: none;
+      font-size: 12px;
+      z-index: 100;
+      box-shadow: 0 -1px 8px rgba(0,0,0,0.7);
+    }
+
+    #footer a {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #b3a7f9;
+      text-decoration: none;
+      transition: color 0.2s ease;
+      font-weight: 700;
+    }
+    #footer a:hover {
+      color: #818cf8;
+      text-decoration: underline;
+    }
+    #footer svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
+
+    /* Fixed top-right PLAY MON-FLIP button */
+    #play-monflip {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      background: var(--accent);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 14px;
+      text-decoration: none;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      transition: background-color 0.25s ease, transform 0.2s ease;
+      user-select: none;
+      z-index: 100;
+    }
+    #play-monflip:hover {
+      background-color: var(--accent-hover);
+      transform: translateY(-2px);
+    }
+
+    @media (max-width: 480px) {
+      #footer {
+        font-size: 11px;
+      }
+      #footer svg {
+        width: 14px;
+        height: 14px;
+      }
+      #play-monflip {
+        padding: 6px 12px;
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <img id="logo" src="https://docs.monad.xyz/img/monad_logo.png" alt="Monad Logo" />
+    <div id="title">Monad Paint 🎨</div>
+  </div>
+
+  <div id="controls">
+    <button id="connect">Connect Wallet</button>
+    <button id="disconnect" style="display:none;">Disconnect</button>
+    <input type="color" id="colorPicker" value="#ff0000" title="Select color" />
+    <span id="balance"></span>
+  </div>
+
+  <div id="canvas"></div>
+  <div id="status">Status: Not connected</div>
+
+  <!-- Fixed PLAY MON-FLIP button top-right -->
+  <a href="https://mon-flip.vercel.app/" target="_blank" rel="noopener noreferrer" id="play-monflip" title="Play Monad Flip Game">PLAY MonFLIP</a>
+
+  <!-- Fixed bottom footer with X profile -->
+  <div id="footer">
+    <a href="https://twitter.com/lemonar777" target="_blank" rel="noopener noreferrer" title="Follow the Developer @lemonar777">
+      <svg aria-hidden="true" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M22.46 6c-.77.35-1.6.58-2.46.69a4.3 4.3 0 0 0 1.88-2.38 8.59 8.59 0 0 1-2.72 1.04A4.28 4.28 0 0 0 11.1 9.03 12.14 12.14 0 0 1 3 5.3a4.28 4.28 0 0 0 1.32 5.71A4.25 4.25 0 0 1 2.8 10v.05a4.28 4.28 0 0 0 3.43 4.2 4.28 4.28 0 0 1-1.93.07 4.28 4.28 0 0 0 4 2.97A8.6 8.6 0 0 1 2 19.54a12.14 12.14 0 0 0 6.56 1.92c7.88 0 12.2-6.53 12.2-12.2v-.56A8.6 8.6 0 0 0 24 5.5a8.48 8.48 0 0 1-2.54.7z"/>
+      </svg>
+      Made with ❤️ for MONAD/\Follow @lemonar777
+    </a>
+    <!-- Donate Button -->
+    <button id="donateButton" style="margin-left: 12px; background: transparent; border: 1px solid #b3a7f9; color: #b3a7f9; padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 12px;">
+      Donate MON
+    </button>
+  </div>
+
+  <!-- Donate Modal -->
+  <div id="donateModal" style="
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8);
+    z-index: 200;
+    justify-content: center;
+    align-items: center;
+  ">
+    <div style="
+      background: #222;
+      padding: 20px;
+      border-radius: 12px;
+      width: 280px;
+      color: white;
+      text-align: center;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    ">
+      <h2 style="margin-bottom: 12px;">Donate MON</h2>
+      <input id="donationAmount" type="number" min="0" step="0.0001" placeholder="Amount (MON)" style="width: 100%; padding: 8px; font-size: 16px; border-radius: 6px; border: none; margin-bottom: 12px;" />
+      <div id="donateStatus" style="min-height: 20px; margin-bottom: 12px; font-size: 14px; color: #ccc;"></div>
+      <button id="confirmDonate" style="background: #6366f1; border: none; color: white; padding: 8px 16px; border-radius: 8px; cursor: pointer; margin-right: 8px;">Send</button>
+      <button id="cancelDonate" style="background: #444; border: none; color: white; padding: 8px 16px; border-radius: 8px; cursor: pointer;">Cancel</button>
+    </div>
+  </div>
+
+  <script>
+    const contractAddress = "0x5CF8586bbe054980352C93E783E3c0bE319b9A3a";
+    const abi = [
+      {
+        "anonymous": false,
+        "inputs": [
+          { "indexed": false, "internalType": "uint256", "name": "x", "type": "uint256" },
+          { "indexed": false, "internalType": "uint256", "name": "y", "type": "uint256" },
+          { "indexed": false, "internalType": "uint32", "name": "color", "type": "uint32" }
+        ],
+        "name": "PixelSet",
+        "type": "event"
+      },
+      {
+        "inputs": [],
+        "name": "HEIGHT",
+        "outputs": [
+          { "internalType": "uint256", "name": "", "type": "uint256" }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "WIDTH",
+        "outputs": [
+          { "internalType": "uint256", "name": "", "type": "uint256" }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          { "internalType": "uint256", "name": "x", "type": "uint256" },
+          { "internalType": "uint256", "name": "y", "type": "uint256" }
+        ],
+        "name": "getPixel",
+        "outputs": [
+          { "internalType": "uint32", "name": "", "type": "uint32" }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          { "internalType": "uint256", "name": "", "type": "uint256" },
+          { "internalType": "uint256", "name": "", "type": "uint256" }
+        ],
+        "name": "pixels",
+        "outputs": [
+          { "internalType": "uint32", "name": "", "type": "uint32" }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          { "internalType": "uint256", "name": "x", "type": "uint256" },
+          { "internalType": "uint256", "name": "y", "type": "uint256" },
+          { "internalType": "uint32", "name": "color", "type": "uint32" }
+        ],
+        "name": "setPixel",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      }
+    ];
+
+    const connectBtn = document.getElementById("connect");
+    const disconnectBtn = document.getElementById("disconnect");
+    const statusEl = document.getElementById("status");
+    const balanceEl = document.getElementById("balance");
+    const canvas = document.getElementById("canvas");
+    const colorPicker = document.getElementById("colorPicker");
+
+    let provider = null;
+    let signer = null;
+    let contract = null;
+    let isPainting = false;
+
+    function getInjectedProvider() {
+      if (window.ethereum?.providers?.length) {
+        const metamask = window.ethereum.providers.find(p => p.isMetaMask);
+        return metamask || window.ethereum.providers[0];
+      }
+      return window.ethereum || null;
+    }
+
+    async function switchToMonadTestnet(injectedProvider) {
+      const chainIdHex = "0x279f"; // 10143 decimal
+      try {
+        await injectedProvider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: chainIdHex }]
+        });
+        console.log("Switched to Monad Testnet");
+        return true;
+      } catch (switchError) {
+        console.warn("Switch network error:", switchError);
+        if (switchError.code === 4902) {
+          try {
+            await injectedProvider.request({
+              method: "wallet_addEthereumChain",
+              params: [{
+                chainId: chainIdHex,
+                chainName: "Monad Testnet",
+                nativeCurrency: { name: "Monad", symbol: "MON", decimals: 18 },
+                rpcUrls: ["https://testnet-rpc.monad.xyz"],
+                blockExplorerUrls: ["https://testnet.monadexplorer.com"]
+              }]
+            });
+            await injectedProvider.request({
+              method: "wallet_switchEthereumChain",
+              params: [{ chainId: chainIdHex }]
+            });
+            console.log("Added and switched to Monad Testnet");
+            return true;
+          } catch (addError) {
+            console.error("Failed to add Monad Testnet:", addError);
+            statusEl.textContent = "Failed to add Monad Testnet network.";
+            return false;
+          }
+        } else {
+          statusEl.textContent = "Failed to switch to Monad Testnet.";
+          return false;
+        }
+      }
+    }
+
+    async function connectWallet() {
+      const injectedProvider = getInjectedProvider();
+      if (!injectedProvider) {
+        alert("No EVM-compatible wallet found. Please install MetaMask or similar.");
+        return;
+      }
+
+      connectBtn.disabled = true;
+      statusEl.textContent = "Requesting wallet connection...";
+
+      try {
+        await injectedProvider.request({ method: "eth_requestAccounts" });
+
+        const switched = await switchToMonadTestnet(injectedProvider);
+        if (!switched) {
+          connectBtn.disabled = false;
+          return;
+        }
+
+        provider = new ethers.providers.Web3Provider(injectedProvider);
+        signer = provider.getSigner();
+        contract = new ethers.Contract(contractAddress, abi, signer);
+
+        const address = await signer.getAddress();
+        const balance = await provider.getBalance(address);
+        const monBalance = ethers.utils.formatEther(balance);
+
+        statusEl.textContent = `Connected: ${address.slice(0,6)}...${address.slice(-4)}`;
+        balanceEl.textContent = `Balance: ${parseFloat(monBalance).toFixed(4)} MON`;
+
+        connectBtn.style.display = "none";
+        disconnectBtn.style.display = "inline-block";
+
+        await loadPixels();
+
+        contract.on("PixelSet", (x, y, color) => {
+          const num = color.toNumber ? color.toNumber() : parseInt(color);
+          if (num !== 0) {
+            const hexColor = "#" + num.toString(16).padStart(6, "0");
+            const pixel = canvas.querySelector(`.pixel[data-x='${x}'][data-y='${y}']`);
+            if (pixel) {
+              pixel.style.backgroundColor = hexColor;
+              statusEl.textContent = `Pixel updated at (${x}, ${y})`;
+            }
+          }
+        });
+
+      } catch (err) {
+        console.warn("Connection failed:", err);
+        statusEl.textContent = "Connection cancelled or failed.";
+        connectBtn.disabled = false;
+      }
+    }
+
+    function disconnectWallet() {
+      if(contract) contract.removeAllListeners("PixelSet");
+      provider = null;
+      signer = null;
+      contract = null;
+      isPainting = false;
+
+      statusEl.textContent = "Disconnected";
+      balanceEl.textContent = "";
+      connectBtn.style.display = "inline-block";
+      connectBtn.disabled = false;
+      disconnectBtn.style.display = "none";
+
+      canvas.querySelectorAll(".pixel").forEach(pixel => {
+        pixel.style.backgroundColor = "#1f1f1f";
+      });
+    }
+
+    for (let y = 0; y < 20; y++) {
+      for (let x = 0; x < 20; x++) {
+        const pixel = document.createElement("div");
+        pixel.className = "pixel";
+        pixel.dataset.x = x;
+        pixel.dataset.y = y;
+
+        pixel.onclick = async () => {
+          if (!contract) {
+            alert("Please connect your wallet first.");
+            return;
+          }
+          if (isPainting) {
+            statusEl.textContent = "Please wait for previous transaction to finish.";
+            return;
+          }
+
+          const colorHex = colorPicker.value;
+          const colorInt = parseInt(colorHex.slice(1), 16);
+
+          try {
+            isPainting = true;
+            statusEl.textContent = `Setting pixel (${x}, ${y})...`;
+
+            const tx = await contract.setPixel(x, y, colorInt, { gasLimit: 150000 });
+            statusEl.textContent = `Transaction sent: ${tx.hash}`;
+            await tx.wait();
+
+            pixel.style.backgroundColor = colorHex;
+            statusEl.textContent = `Pixel set at (${x}, ${y}) - Tx confirmed`;
+          } catch (err) {
+            console.error(err);
+            let msg = "Transaction failed or rejected.";
+            if (err.data?.message) msg = err.data.message;
+            else if (err.error?.message) msg = err.error.message;
+            else if (err.message) msg = err.message;
+            statusEl.textContent = msg;
+          } finally {
+            isPainting = false;
+          }
+        };
+
+        canvas.appendChild(pixel);
+      }
+    }
+
+    async function loadPixels() {
+      if (!contract) return;
+      statusEl.textContent = "Loading canvas pixels...";
+      for (let y = 0; y < 20; y++) {
+        for (let x = 0; x < 20; x++) {
+          try {
+            const colorInt = await contract.getPixel(x, y);
+            const num = colorInt.toNumber ? colorInt.toNumber() : parseInt(colorInt);
+            if (num !== 0) {
+              const hexColor = "#" + num.toString(16).padStart(6, "0");
+              const pixel = canvas.querySelector(`.pixel[data-x='${x}'][data-y='${y}']`);
+              if (pixel) pixel.style.backgroundColor = hexColor;
+            }
+          } catch (err) {
+            console.warn(`Failed to load pixel (${x},${y})`, err);
+          }
+        }
+      }
+      statusEl.textContent = "Canvas loaded.";
+    }
+
+    if (window.ethereum) {
+      window.ethereum.on("accountsChanged", () => {
+        statusEl.textContent = "Account changed. Please reconnect.";
+        disconnectWallet();
+      });
+
+      window.ethereum.on("chainChanged", () => {
+        statusEl.textContent = "Chain changed. Please reconnect.";
+        disconnectWallet();
+      });
+    }
+
+    connectBtn.onclick = connectWallet;
+    disconnectBtn.onclick = disconnectWallet;
+
+    // Donate functionality
+
+    const donateButton = document.getElementById("donateButton");
+    const donateModal = document.getElementById("donateModal");
+    const cancelDonate = document.getElementById("cancelDonate");
+    const confirmDonate = document.getElementById("confirmDonate");
+    const donationAmountInput = document.getElementById("donationAmount");
+    const donateStatus = document.getElementById("donateStatus");
+
+    const myAddress = "0x90FBd5371e02FD1E43a9803cD18a87Aad1AeA434"; // <-- Replace with your actual wallet address
+
+    donateButton.onclick = () => {
+      donateStatus.textContent = "";
+      donationAmountInput.value = "";
+      donateModal.style.display = "flex";
+    };
+
+    cancelDonate.onclick = () => {
+      donateModal.style.display = "none";
+    };
+
+    confirmDonate.onclick = async () => {
+      donateStatus.textContent = "";
+      const amount = donationAmountInput.value.trim();
+
+      if (!provider || !signer) {
+        donateStatus.textContent = "Please connect your wallet first.";
+        return;
+      }
+
+      if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
+        donateStatus.textContent = "Enter a valid amount > 0";
+        return;
+      }
+
+      try {
+        confirmDonate.disabled = true;
+        donateStatus.textContent = "Sending transaction...";
+
+        const tx = await signer.sendTransaction({
+          to: myAddress,
+          value: ethers.utils.parseEther(amount)
+        });
+
+        donateStatus.textContent = `Transaction sent: ${tx.hash}`;
+        await tx.wait();
+
+        donateStatus.textContent = `Thank you for your donation! Tx confirmed.`;
+        donationAmountInput.value = "";
+      } catch (err) {
+        console.error(err);
+        donateStatus.textContent = "Transaction failed or rejected.";
+      } finally {
+        confirmDonate.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>
